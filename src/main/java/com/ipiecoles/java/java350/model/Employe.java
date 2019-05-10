@@ -43,31 +43,50 @@ public class Employe {
         this.tempsPartiel = tempsPartiel;
     }
 
-    public Integer getNombreAnneeAnciennete() {
-        if(dateEmbauche != null && dateEmbauche.isBefore(LocalDate.now())){
-            return LocalDate.now().getYear() - dateEmbauche.getYear();
-        }
-        return 0;
+    /**
+     * Retourne le nombre d'année d'ancienneté de l'employé par rapport à sa date d'embauche (on ne prend pas en compte
+     * les mois et les jours. Il faut en revanche que la d'embauche soit non nulle et l'année antérieure à l'année courante
+     * sinon on renvoie une ancienneté de 0
+     *
+     * @return le nombre d'année d'ancienneté
+     */
+    public final Integer getNombreAnneeAnciennete() {
+        return dateEmbauche != null && LocalDate.now().getYear() >= dateEmbauche.getYear() ? LocalDate.now().getYear() - dateEmbauche.getYear() : 0;
     }
 
     public Integer getNbConges() {
         return Entreprise.NB_CONGES_BASE + this.getNombreAnneeAnciennete();
     }
 
+    /**
+     * Nombre de jours de RTT =
+     *   Nombre de jours dans l'année
+     * – plafond maximal du forfait jours de la convention collective
+     * – nombre de jours de repos hebdomadaires
+     * – jours de congés payés
+     * – nombre de jours fériés tombant un jour ouvré
+     *
+     * Au prorata de son pourcentage d'activité (arrondi au supérieur)
+     *
+     * @return le nombre de jours de RTT
+     */
     public Integer getNbRtt(){
         return getNbRtt(LocalDate.now());
     }
 
     public Integer getNbRtt(LocalDate d){
-        int i1 = d.isLeapYear() ? 365 : 366;
-        int var = 104;
+        int nbJoursAnnee = d.isLeapYear() ? 366 : 365;
+        int nbJoursReposAnnee = 104;
         switch (LocalDate.of(d.getYear(),1,1).getDayOfWeek()){
-            case THURSDAY: if(d.isLeapYear()) var =  var + 1; break;
-            case FRIDAY: if(d.isLeapYear()) var =  var + 2; else var =  var + 1;
-            case SATURDAY: var = var + 1; break;
+            case THURSDAY: if(d.isLeapYear()) nbJoursReposAnnee =  nbJoursReposAnnee + 1; break;
+            case FRIDAY: if(d.isLeapYear()) nbJoursReposAnnee =  nbJoursReposAnnee + 2; else nbJoursReposAnnee =  nbJoursReposAnnee + 1; break;
+            case SATURDAY: nbJoursReposAnnee = nbJoursReposAnnee + 1; break;
+            default:
+                break;
         }
-        int monInt = (int) Entreprise.joursFeries(d).stream().filter(localDate -> localDate.getDayOfWeek().getValue() <= DayOfWeek.FRIDAY.getValue()).count();
-        return (int) Math.ceil((i1 - Entreprise.NB_JOURS_MAX_FORFAIT - var - Entreprise.NB_CONGES_BASE - monInt) * tempsPartiel);
+        int nbJoursFeries = (int) Entreprise.joursFeries(d).stream().filter(localDate -> localDate.getDayOfWeek().getValue() <= DayOfWeek.FRIDAY.getValue()).count();
+        int nbRtt = (int) Math.ceil((nbJoursAnnee - Entreprise.NB_JOURS_MAX_FORFAIT - nbJoursReposAnnee - Entreprise.NB_CONGES_BASE - nbJoursFeries) * tempsPartiel);
+        return nbRtt;
     }
 
     /**
@@ -101,11 +120,26 @@ public class Employe {
             prime = Entreprise.primeAnnuelleBase() * (this.performance + Entreprise.INDICE_PRIME_BASE) + primeAnciennete;
         }
         //Au pro rata du temps partiel.
-        return prime * this.tempsPartiel;
+        return Math.round(prime * this.tempsPartiel * 100)/100.0;
     }
 
+
+    /** Calcul de l'augmentation de salaire selon la règle :
+     * On fera l'hypothèse que si le pourcentage d'augmentation est nul, négatif ou supérieur à 1
+     * (donc 100%), alors le salaire restera le même.
+     * @param pourcentage
+     * @return le salaire augmenté
+     */
     //Augmenter salaire
-    //public void augmenterSalaire(double pourcentage){}
+
+    public Double augmenterSalaire(double pourcentage){
+        Double salaireAugmente = Math.ceil(this.getSalaire() * (1 + pourcentage * 100)/100.0)*10;
+
+        if(pourcentage <= 0.0 || pourcentage > 1.0){
+            salaireAugmente = this.getSalaire();
+        }
+            return salaireAugmente;
+    }
 
     public Long getId() {
         return id;
@@ -220,3 +254,4 @@ public class Employe {
         return Objects.hash(id, nom, prenom, matricule, dateEmbauche, salaire, performance);
     }
 }
+
